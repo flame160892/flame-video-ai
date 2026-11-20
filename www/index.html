@@ -86,6 +86,7 @@ a{color:#7dd3fc}
     <div><label>Model teks / transkrip</label><input id="cTm"></div>
     <div><label>Model gambar</label><input id="cIm"></div>
   </div>
+  <label>Model suara (TTS)</label><input id="cTts">
   <p class="mut">Key hanya disimpan di HP/browser ini. Kalau model sudah ganti nama, ubah di kolom di atas.</p>
   <div class="row"><button class="ok" id="bSaveCfg">Simpan</button><button id="bTest">Cek Gemini</button></div>
   <div class="status" id="setStat"></div>
@@ -190,6 +191,15 @@ a{color:#7dd3fc}
     <div class="step"><div class="num">4</div><h3>Upload suara</h3></div>
     <label class="drop" id="drop">🎙️<br><b>Tap / tarik file voice over ke sini</b><br><span class="mut">MP3, WAV, M4A. Bisa sampai 30 menit.</span><input type="file" id="fAudio" accept="audio/*,.m4a,.mp3,.wav" class="hide"></label>
     <div class="status" id="audStat"></div>
+    <div class="tip" style="background:#0f1a14;border-color:#1f5a3a">
+      <b>⚡ Atau buat suara otomatis dengan Gemini (tanpa buka AI Studio)</b>
+      <div class="grid2">
+        <div><label>Suara</label><select data-k="ttsVoice"></select></div>
+        <div><label>Tempo</label><select data-k="ttsPace"><option value="">Normal</option><option value="at a slightly faster pace">Agak cepat</option><option value="at a fast, energetic pace">Cepat</option><option value="at a slow, calm pace">Pelan</option></select></div>
+      </div>
+      <button class="ok full" id="bTTS">🎙 Buat suara dari naskah</button>
+      <div class="status" id="ttsStat"></div>
+    </div>
     <label>Bahasa suara</label>
     <select data-k="bahasaSuara"><option>Indonesia</option><option>English</option><option>Melayu</option></select>
   </div>
@@ -314,9 +324,9 @@ const FORMATS=Object.keys(IDEAS);
 const NARASI=['POV kamu','Narator dokumenter','Fakta cepat','Misteri / tegang','Bercerita santai','Lucu / jenaka'];
 const WPM={30:75,60:140,180:420,300:700};
 
-const DEF={title:'',style:'clay',styleCat:'Semua',customStyle:'',ratio:'9:16',chars:[],format:'Bagaimana jika',narasi:'POV kamu',durasi:'60',bahasa:'Indonesia',bahasaSuara:'Indonesia',naskah:'',styleInstr:'',th:-45,pause:0.5,sceneLen:2,cardPct:10,scenes:[],res:720,subOn:'1',kb:'1',subPos:'0.72'};
+const DEF={title:'',style:'clay',styleCat:'Semua',customStyle:'',ratio:'9:16',chars:[],format:'Bagaimana jika',narasi:'POV kamu',durasi:'60',bahasa:'Indonesia',bahasaSuara:'Indonesia',naskah:'',styleInstr:'',th:-45,pause:0.5,sceneLen:2,cardPct:10,scenes:[],ttsVoice:'Charon',ttsPace:'',res:720,subOn:'1',kb:'1',subPos:'0.72'};
 let S=Object.assign(structuredClone(DEF),LS.get('fv_cur',{}));
-const CFG=Object.assign({key:'',tm:'gemini-2.5-flash',im:'gemini-2.5-flash-image'},LS.get('fv_cfg',{}));
+const CFG=Object.assign({key:'',tm:'gemini-2.5-flash',im:'gemini-2.5-flash-image',ttm:'gemini-2.5-flash-preview-tts'},LS.get('fv_cfg',{}));
 let audioOrig=null,audioTrim=null,audioName='',AC=null;
 const getAC=()=>AC||(AC=new (window.AudioContext||window.webkitAudioContext)());
 
@@ -326,6 +336,8 @@ function info(){$('#projInfo').textContent=(audioName?'🎧 '+audioName+(audioTr
 
 /* ---------- fields ---------- */
 function fillSelect(sel,arr){sel.innerHTML=arr.map(v=>`<option>${esc(v)}</option>`).join('')}
+const VOICES=[['Charon','Pria, informatif ala dokumenter'],['Kore','Wanita, tegas & jelas'],['Puck','Pria, ceria bersemangat'],['Fenrir','Pria, antusias'],['Orus','Pria, mantap'],['Enceladus','Pria, berbisik misterius'],['Algenib','Pria, serak dalam'],['Achird','Pria, ramah'],['Aoede','Wanita, santai'],['Leda','Wanita, muda'],['Zephyr','Wanita, cerah'],['Sulafat','Wanita, hangat']];
+$('[data-k=ttsVoice]').innerHTML=VOICES.map(([v,d])=>`<option value="${v}">${v} — ${d}</option>`).join('');
 fillSelect($('[data-k=format]'),FORMATS);fillSelect($('[data-k=narasi]'),NARASI);
 function bindFields(){$$('[data-k]').forEach(el=>{const k=el.dataset.k;el.value=S[k];el.oninput=el.onchange=()=>{S[k]=el.dataset.n?Number(el.value):el.value;onField(k);autosave()}});onField()}
 function onField(k){$('#vTh').textContent=S.th+' dB';$('#vPa').textContent=Number(S.pause).toFixed(2)+' dtk';
@@ -334,9 +346,9 @@ function onField(k){$('#vTh').textContent=S.th+' dB';$('#vPa').textContent=Numbe
 
 /* ---------- settings ---------- */
 function refreshKey(){$('#dKey').classList.toggle('on',!!CFG.key);$('#tKey').textContent=CFG.key?'Gemini: siap':'Gemini: belum'}
-$('#bSet').onclick=()=>{$('#setCard').classList.toggle('hide');$('#cKey').value=CFG.key;$('#cTm').value=CFG.tm;$('#cIm').value=CFG.im};
-function openSettings(){$('#setCard').classList.remove('hide');$('#cKey').value=CFG.key;$('#cTm').value=CFG.tm;$('#cIm').value=CFG.im;scrollTo({top:0,behavior:'smooth'})}
-$('#bSaveCfg').onclick=()=>{CFG.key=$('#cKey').value.trim();CFG.tm=$('#cTm').value.trim()||'gemini-2.5-flash';CFG.im=$('#cIm').value.trim()||'gemini-2.5-flash-image';LS.set('fv_cfg',CFG);refreshKey();toast('Pengaturan disimpan')};
+$('#bSet').onclick=()=>{$('#setCard').classList.toggle('hide');$('#cKey').value=CFG.key;$('#cTm').value=CFG.tm;$('#cIm').value=CFG.im;$('#cTts').value=CFG.ttm};
+function openSettings(){$('#setCard').classList.remove('hide');$('#cKey').value=CFG.key;$('#cTm').value=CFG.tm;$('#cIm').value=CFG.im;$('#cTts').value=CFG.ttm;scrollTo({top:0,behavior:'smooth'})}
+$('#bSaveCfg').onclick=()=>{CFG.key=$('#cKey').value.trim();CFG.tm=$('#cTm').value.trim()||'gemini-2.5-flash';CFG.im=$('#cIm').value.trim()||'gemini-2.5-flash-image';CFG.ttm=$('#cTts').value.trim()||'gemini-2.5-flash-preview-tts';LS.set('fv_cfg',CFG);refreshKey();toast('Pengaturan disimpan')};
 $('#bTest').onclick=async()=>{$('#bSaveCfg').click();$('#setStat').textContent='Mengecek...';try{const t=await gemText('Balas satu kata: OK');$('#setStat').textContent='✅ Gemini tersambung: '+t.trim().slice(0,40)}catch(e){$('#setStat').textContent='❌ '+e.message}};
 
 /* ---------- gemini ---------- */
@@ -501,6 +513,28 @@ Balas JSON array segmen berurutan: [{"s":detik_mulai,"e":detik_selesai,"t":"teks
  afterScenes('✅ Transkrip selesai · '+S.scenes.length+' scene. Lanjut ke Scene & Gambar.');
 }).catch(()=>$('#transStat').textContent='Gagal transkrip. Coba lagi, atau pakai tombol "tanpa API".');
 function afterScenes(msg){$('#transStat').textContent=msg;showStats();renderScenes();autosave()}
+
+/* ---------- TTS ---------- */
+function chunkText(t,max=1400){const ss=t.match(/[^.!?…]+[.!?…]*\s*/g)||[t];const out=[];let c='';ss.forEach(x=>{if((c+x).length>max&&c){out.push(c.trim());c=''}c+=x});if(c.trim())out.push(c.trim());return out}
+function pcmToBuffer(b64,rate){const bin=atob(b64),n=bin.length>>1,buf=getAC().createBuffer(1,n,rate),d=buf.getChannelData(0);for(let i=0;i<n;i++){let v=bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8);if(v>=32768)v-=65536;d[i]=v/32768}return buf}
+function concatBuffers(list){const sr=list[0].sampleRate,gap=Math.round(sr*0.25),len=list.reduce((a,b)=>a+b.length,0)+gap*(list.length-1),out=getAC().createBuffer(1,len,sr),o=out.getChannelData(0);let p=0;list.forEach(b=>{o.set(b.getChannelData(0),p);p+=b.length+gap});return out}
+$('#bTTS').onclick=()=>busy($('#bTTS'),async()=>{
+ const text=S.naskah.trim();if(!text)throw new Error('Naskah masih kosong');
+ const parts=chunkText(text),bufs=[];
+ for(let k=0;k<parts.length;k++){
+  $('#ttsStat').textContent=`Membuat suara ${k+1}/${parts.length}...`;
+  const style=(S.styleInstr||'Natural, engaging storyteller voice.')+(S.ttsPace?' Speak '+S.ttsPace+'.':'');
+  const ps=await gem(CFG.ttm,[{text:`${style}\nRead the following ${({Indonesia:"Indonesian",Melayu:"Malay"})[S.bahasaSuara]||S.bahasaSuara} narration aloud exactly as written, treating "..." as short dramatic pauses:\n\n${parts[k]}`}],{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:S.ttsVoice}}}});
+  const a=ps.find(p=>p.inlineData||p.inline_data);if(!a)throw new Error('Gemini tidak mengirim audio');
+  const d=a.inlineData||a.inline_data,rate=+(((d.mimeType||d.mime_type||'').match(/rate=(\d+)/)||[])[1])||24000;
+  bufs.push(pcmToBuffer(d.data,rate));
+ }
+ audioOrig=audioTrim=concatBuffers(bufs);audioName='Suara Gemini ('+S.ttsVoice+').wav';
+ $('#audStat').innerHTML=`🎧 <b>${esc(audioName)}</b> · ${fmt(audioTrim.duration)}`;showStats();setPreview();info();
+ $('#ttsStat').innerHTML=`✅ Suara jadi · ${fmt(audioTrim.duration)} <button class="sm" id="bSaveVo">⬇ Simpan WAV</button>`;
+ $('#bSaveVo').onclick=()=>saveBlob(toWav(audioTrim),audioName);
+ toast('Suara siap — lanjut potong jeda');
+}).catch(()=>{if(!/✅/.test($('#ttsStat').textContent))$('#ttsStat').textContent='Gagal membuat suara. Coba lagi, ganti suara, atau pakai AI Studio.'});
 
 /* ---------- panel 3 ---------- */
 function renderScenes(){
